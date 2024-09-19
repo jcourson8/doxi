@@ -1,0 +1,21 @@
+[project]
+name = "doxi"
+version = "0.1.0"
+description = "A tool to scrape documentation and convert it to markdown."
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "aiohttp",
+    "beautifulsoup4",
+    "requests",
+    "lxml>=5.3.0",
+    "certifi>=2024.7.4",
+    "tqdm>=4.66.5",
+]
+
+[project.scripts]
+doxi = "doxi.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
