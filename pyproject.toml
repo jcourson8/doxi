@@ -1,6 +1,6 @@
 [project]
 name = "doxi"
-version = "0.1.0"
+version = "0.2.0"
 description = "A tool to scrape documentation and convert it to markdown."
 readme = "README.md"
 requires-python = ">=3.8"
