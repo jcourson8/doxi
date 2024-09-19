@@ -1,6 +1,33 @@
 # Doxi - Documentation Scraper
-
 **doxi** is a command-line tool designed to scrape documentation from websites and convert it into markdown files. It organizes the content into structured folders based on the URLs, making it easier to navigate and use the scraped documentation.
+
+**TL;DR**:
+
+`doxi https://docs.tinygrad.org/` results in,
+```bash
+├── developer
+│   ├── developer.md
+│   ├── function.md
+│   ├── hcq.md
+│   ├── runtime.md
+│   └── uop.md
+├── dtypes.md
+├── env_vars.md
+├── index.md
+├── mnist.md
+├── nn.md
+├── quickstart.md
+├── runtime.md
+├── showcase.md
+├── tensor
+│   ├── creation.md
+│   ├── elementwise.md
+│   ├── movement.md
+│   ├── ops.md
+│   └── properties.md
+├── tensor.md
+└── tinybox.md
+```
 
 ## Features
 
