@@ -1,19 +1,16 @@
-# doxi/utils.py
-
 import urllib.parse
 import os
+import re
 
-def sanitize_filename(link: str) -> str:
-    """Sanitize the link to create a valid filename."""
-    # Parse the URL to extract the path
-    parsed_url = urllib.parse.urlparse(link)
-    # Use netloc and path to create a unique filename
-    filename = parsed_url.netloc + parsed_url.path
-    # Replace invalid filename characters with underscores
-    invalid_chars = '<>:"/\\|?*'
-    for char in invalid_chars:
-        filename = filename.replace(char, "_")
-    return filename.strip("_") or "index"
+class Text:
+    Green, Red, White, Yellow = '\033[92m', '\033[91m', '\033[97m', '\033[93m'
+    Bold, Italics = '\033[1m', '\x1B[3m'
+    Reset = '\033[0m'  # This turns off all attributes
+
+def sanitize_filename(name: str) -> str:
+    """Sanitize the filename to remove invalid characters."""
+    name = name.strip().replace(' ', '_')
+    return re.sub(r'(?u)[^-\w.]', '', name)
 
 def create_folder(path):
     os.makedirs(path, exist_ok=True)
