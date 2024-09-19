@@ -1,11 +1,12 @@
-class RateLimitExceededError(BaseException):
-    """Custom exception to indicate rate limit exceeded."""
+class DoxiError(Exception):
+    """Base class for exceptions in Doxi."""
     pass
 
-class PaymentRequiredError(BaseException):
-    """Custom exception to indicate payment required."""
+class RateLimitExceededError(DoxiError):
     pass
 
-class InvalidURLError(BaseException):
-    """Custom exception to indicate invalid URL."""
+class PaymentRequiredError(DoxiError):
+    pass
+
+class InvalidURLError(DoxiError):
     pass

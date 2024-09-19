@@ -1,15 +1,15 @@
 import asyncio
 import aiohttp
 import os
-import requests
 import urllib.parse
 import ssl
 import certifi
-from bs4 import BeautifulSoup
-from .utils import sanitize_filename, create_folder
 from tqdm import tqdm
+from .utils import sanitize_filename, create_folder
 from .utils import Text
-from .errors import InvalidURLError, RateLimitExceededError, PaymentRequiredError
+from .errors import DoxiError, InvalidURLError, RateLimitExceededError, PaymentRequiredError
+from .link_extractor import LinkExtractor
+from .logging import setup_logger
 
 class DoxiScraper:
     def __init__(
@@ -20,23 +20,12 @@ class DoxiScraper:
         flat=False,
         force=False,
     ):
+        self.logger = setup_logger(__name__)
         self.api_key = api_key
         self.max_requests_per_minute = max_requests_per_minute
         self.max_concurrent_requests = max_concurrent_requests
         self.flat = flat
         self.force = force
-
-    def get_links_from_sitemap(self, url):
-        sitemap_url = urllib.parse.urljoin(url, "sitemap.xml")
-        try:
-            response = requests.get(sitemap_url, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, "xml")
-            urls = [loc.text for loc in soup.find_all("loc")]
-            return urls
-        except requests.exceptions.RequestException as e:
-            print(Text.Red + "Unable to fetch sitemap", Text.Reset)
-            exit()
 
     async def fetch(self, session: aiohttp.ClientSession, url: str) -> str:
         """Fetch the markdown content of the page using r.jina.ai API."""
@@ -47,34 +36,31 @@ class DoxiScraper:
             if self.api_key
             else None
         )
-        # Prepare the r.jina.ai API endpoint
         api_url = f"https://r.jina.ai/{urllib.parse.quote(url)}"
+
         try:
             async with session.get(api_url, headers=headers) as response:
                 if response.status == 429:
-                    # Raise custom exception for rate limit
-                    raise RateLimitExceededError(
-                        f"{Text.Bold}Rate limit exceeded when fetching {url}. This may be due to one of the following reasons:{Text.Reset}\n"
-                        "  1. If using an API key: The rate limit options may be incorrectly set for your key.\n"
-                        "  2. If not using an API key: You may have reached the rate limit in a previous CLI call.\n\n"
-                        f"{Text.Bold}Suggested actions:{Text.Reset}\n"
-                        "  - If using an API key: Verify and adjust your rate limit settings.\n"
-                        "  - If not using an API key: Wait approximately one minute before trying again.\n"
-                        "  - Consider upgrading to an API key for higher rate limits."
-                    )
+                    raise RateLimitExceededError("Rate limit exceeded")
                 if response.status == 402:
-                    raise PaymentRequiredError(
-                        f"{Text.Bold}Unable to fetch {url} due to insufficient credits. Please consider one of the following options:{Text.Reset}\n"
-                        "  1. Upgrade your current plan\n"
-                        "  2. Use a different API key with available credits\n"
-                        "  3. Remove the API key to use the free tier (note: this will result in lower rate limits)"
-                    )
+                    raise PaymentRequiredError("Payment required")
                 if response.status == 422:
-                    raise InvalidURLError(f"{Text.Red}Invalid URL from sitemap{Text.Reset}: {url}")
+                    raise InvalidURLError(f"Invalid URL: {url}")
                 response.raise_for_status()
-                return await response.text()
-        except aiohttp.ClientResponseError as e:
+                text = await response.text()
+                if not text:
+                    self.logger.error(f"No content returned for {url}")
+                    return None
+                return text
+        except asyncio.CancelledError:
+            # Allow the task to be canceled
+            raise
+        except (RateLimitExceededError, PaymentRequiredError, InvalidURLError) as e:
+            # Re-raise critical exceptions to be handled upstream
             raise e
+        except Exception as e:
+            self.logger.error(f"Failed to fetch {url}: {e}")
+            return None
 
     async def process_link(
         self,
@@ -89,18 +75,22 @@ class DoxiScraper:
         async with sem:
             try:
                 content = await self.fetch(session, link)
-                with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(content)
+                if not content:
+                    self.logger.error(f"No content returned for {link}")
+                else:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(content)
                 await asyncio.sleep(rate_limit_interval)  # Wait to adhere to rate limit
-            except RateLimitExceededError:
+            except asyncio.CancelledError:
+                # Allow the task to be canceled
                 raise
-            except PaymentRequiredError:
-                raise
+            except (RateLimitExceededError, PaymentRequiredError) as e:
+                # Re-raise to propagate and stop processing
+                raise e
             except InvalidURLError as e:
-                print(str(e))
+                self.logger.warning(f"Invalid URL encountered: {e}")
             except Exception as e:
-                print(f"Failed to fetch {link}: {e}")
-                raise
+                self.logger.error(f"Failed to fetch {link}: {e}")
             finally:
                 pbar.update(1)
 
@@ -112,9 +102,14 @@ class DoxiScraper:
         output_dir: str = ".",
     ):
         """Process an entire documentation site."""
-        print(f"Extracting navigation links from {url}")
-        nav_links = self.get_links_from_sitemap(url)
-        print(f"Found {len(nav_links)} links in sitemap.")
+        self.logger.info(f"Extracting navigation links from {url}")
+        extractor = LinkExtractor(url)
+        nav_links = extractor.extract_links()
+        if not nav_links:
+            self.logger.warning(f"No links found for {url}")
+            return
+
+        self.logger.info(f"Found {len(nav_links)} links.")
 
         # Remove duplicate links
         nav_links = list(set(nav_links))
@@ -164,12 +159,12 @@ class DoxiScraper:
 
         # Inform the user about skipped files
         if links_skipped:
-            print(f"Skipping {len(links_skipped)} files that already exist.")
+            self.logger.info(f"Skipping {len(links_skipped)} files that already exist.")
         if links_to_process:
-            print(f"Processing {len(links_to_process)} files.")
+            self.logger.info(f"Processing {len(links_to_process)} files.")
 
         if not links_to_process:
-            print("All documentation files already exist. Nothing to do.")
+            self.logger.info("All documentation files already exist. Nothing to do.")
             return  # Exit the function
 
         # Create SSL context using certifi
@@ -182,7 +177,6 @@ class DoxiScraper:
         async with aiohttp.ClientSession(connector=connector) as session:
             tasks = []
             for link, file_path in links_to_process:
-                # Wrap the coroutine in a Task object
                 task = asyncio.create_task(
                     self.process_link(
                         session, link, file_path, sem, rate_limit_interval, pbar
@@ -190,18 +184,24 @@ class DoxiScraper:
                 )
                 tasks.append(task)
 
+            pending = set(tasks)
             try:
-                await asyncio.gather(*tasks)
-            except (RateLimitExceededError, PaymentRequiredError) as e:
-                # Cancel all pending tasks
-                for task in tasks:
-                    task.cancel()
-                # Wait for tasks to cancel
-                await asyncio.gather(*tasks, return_exceptions=True)
-                # Re-raise the exception to stop further processing
-                raise e
-            except InvalidURLError as e:
-                raise e
+                while pending:
+                    done, pending = await asyncio.wait(
+                        pending, return_when=asyncio.FIRST_EXCEPTION
+                    )
+                    for task in done:
+                        exc = task.exception()
+                        if exc:
+                            if isinstance(exc, (RateLimitExceededError, PaymentRequiredError)):
+                                self.logger.error(f"{exc}. Canceling all tasks.")
+                                for p in pending:
+                                    p.cancel()
+                                await asyncio.gather(*pending, return_exceptions=True)
+                                raise exc
+                            else:
+                                # Log other exceptions but continue
+                                self.logger.error(f"Task failed with exception: {exc}")
             finally:
                 pbar.close()
 
@@ -220,11 +220,11 @@ class DoxiScraper:
 
         try:
             await asyncio.gather(*tasks)
-        except RateLimitExceededError as e:
-            print(str(e))
-        except PaymentRequiredError as e:
-            print(str(e))
-        except InvalidURLError as e:
-            print(str(e))
+        except (RateLimitExceededError, PaymentRequiredError) as e:
+            self.logger.error(f"Scraper stopped due to error: {e}")
+            # Optionally, cancel all tasks if not already canceled
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+            self.logger.error(f"An unexpected error occurred: {e}")
