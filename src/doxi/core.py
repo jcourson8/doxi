@@ -9,8 +9,7 @@ from bs4 import BeautifulSoup
 from .utils import sanitize_filename, create_folder
 from tqdm import tqdm
 from .utils import Text
-from .errors import RateLimitExceededError, PaymentRequiredError
-
+from .errors import InvalidURLError, RateLimitExceededError, PaymentRequiredError
 
 class DoxiScraper:
     def __init__(
@@ -70,14 +69,12 @@ class DoxiScraper:
                         "  2. Use a different API key with available credits\n"
                         "  3. Remove the API key to use the free tier (note: this will result in lower rate limits)"
                     )
-
+                if response.status == 422:
+                    raise InvalidURLError(f"{Text.Red}Invalid URL from sitemap{Text.Reset}: {url}")
                 response.raise_for_status()
                 return await response.text()
         except aiohttp.ClientResponseError as e:
-            if e.status == 429:
-                raise RateLimitExceededError(f"Rate limit exceeded when fetching {url}")
-            else:
-                raise e
+            raise e
 
     async def process_link(
         self,
@@ -99,6 +96,8 @@ class DoxiScraper:
                 raise
             except PaymentRequiredError:
                 raise
+            except InvalidURLError as e:
+                print(str(e))
             except Exception as e:
                 print(f"Failed to fetch {link}: {e}")
                 raise
@@ -201,6 +200,8 @@ class DoxiScraper:
                 await asyncio.gather(*tasks, return_exceptions=True)
                 # Re-raise the exception to stop further processing
                 raise e
+            except InvalidURLError as e:
+                raise e
             finally:
                 pbar.close()
 
@@ -223,6 +224,7 @@ class DoxiScraper:
             print(str(e))
         except PaymentRequiredError as e:
             print(str(e))
+        except InvalidURLError as e:
+            print(str(e))
         except Exception as e:
-            pass
             print(f"An unexpected error occurred: {e}")
