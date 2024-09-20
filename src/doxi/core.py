@@ -194,7 +194,6 @@ class DoxiScraper:
                         exc = task.exception()
                         if exc:
                             if isinstance(exc, (RateLimitExceededError, PaymentRequiredError)):
-                                self.logger.error(f"{exc}. Canceling all tasks.")
                                 for p in pending:
                                     p.cancel()
                                 await asyncio.gather(*pending, return_exceptions=True)
@@ -211,6 +210,9 @@ class DoxiScraper:
 
         tasks = []
         for url in documentation_urls:
+            if not url.startswith("http://") and not url.startswith("https://"):
+                url = "http://" + url
+                
             task = asyncio.create_task(
                 self.process_documentation_site(
                     url, sem, rate_limit_interval, output_dir
