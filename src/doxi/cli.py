@@ -2,7 +2,9 @@ import fire
 import os
 from .utils import Text
 from .core import DoxiScraper
+from .logging import setup_logger
 
+logger = setup_logger(__name__)
 
 def doxi(
     url: str,
@@ -32,10 +34,7 @@ def doxi(
     if not api_key:
         max_requests_per_minute = max_requests_per_minute or 20
         max_concurrent_requests = max_concurrent_requests or 2
-        print(f"{Text.Yellow}{Text.Bold}warning{Text.Reset}: ", end="")
-        print(
-            f"{Text.Bold}No API key provided. Falling back to unauthenticated mode with reduced rate limits. For faster performance, get a free API key from https://jina.ai/reader/ and provide it using '--api_key' or set the 'JINA_READER_KEY' environment variable.{Text.Reset}"
-        )
+        logger.warning("No API key provided. Falling back to unauthenticated mode with reduced rate limits. For faster performance, get a free API key from https://jina.ai/reader/ and provide it using '--api_key' or set the 'JINA_READER_KEY' environment variable.")
     else:
         max_requests_per_minute = max_requests_per_minute or 200
         max_concurrent_requests = max_concurrent_requests or 2
@@ -51,6 +50,7 @@ def doxi(
     import asyncio
 
     asyncio.run(scraper.run([url], output_dir))
+
 
 def cli():
     fire.Fire(doxi)
