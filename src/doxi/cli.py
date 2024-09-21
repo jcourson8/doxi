@@ -17,19 +17,18 @@ def doxi(
 ):
     """
     Scrape documentation and convert it to markdown.
-
     Args:
-        url (str): Documentation URL to scrape.
-        api_key (str, optional): Your API key for r.jina.ai. If not provided, will look for JINA_READER_KEY environment variable.
-        output_dir (str, optional): Directory to save the output. Defaults to current directory.
-        max_requests_per_minute (int, optional): Max number of requests per minute.
-        max_concurrent_requests (int, optional): Max number of concurrent requests.
-        flat (bool, optional): Save all files into one folder without subdirectories.
-        force (bool, optional): Force re-download of files even if they already exist.
+    url (str): Documentation URL to scrape.
+    api_key (str, optional): Your API key for r.jina.ai. If not provided, will look for JINA_READER_KEY environment variable.
+    output_dir (str, optional): Directory to save the output. Defaults to current directory.
+    max_requests_per_minute (int, optional): Max number of requests per minute.
+    max_concurrent_requests (int, optional): Max number of concurrent requests.
+    flat (bool, optional): Save all files into one folder without subdirectories.
+    force (bool, optional): Force re-download of files even if they already exist.
     """
     # Try to get API key from argument or environment variable
     api_key = api_key or os.environ.get("JINA_READER_KEY")
-
+    
     # Set default rate limits based on whether API key is provided
     if not api_key:
         max_requests_per_minute = max_requests_per_minute or 20
@@ -38,7 +37,7 @@ def doxi(
     else:
         max_requests_per_minute = max_requests_per_minute or 200
         max_concurrent_requests = max_concurrent_requests or 2
-
+    
     scraper = DoxiScraper(
         api_key=api_key,
         max_requests_per_minute=max_requests_per_minute,
@@ -46,11 +45,10 @@ def doxi(
         flat=flat,
         force=force,
     )
-
+    
     import asyncio
-
     asyncio.run(scraper.run([url], output_dir))
-
 
 def cli():
     fire.Fire(doxi)
+    

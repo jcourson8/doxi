@@ -14,8 +14,7 @@ class LinkExtractor:
         # Try different strategies to extract links
         extractors = [
             self._from_sitemap,
-            self._from_navigation,
-            self._from_custom_logic,
+            self._from_all_links
         ]
         for extractor in extractors:
             links = extractor()
@@ -29,56 +28,39 @@ class LinkExtractor:
             response = requests.get(sitemap_url, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, "xml")
-            urls = [loc.text for loc in soup.find_all("loc")]
+            urls = [self.strip_fragment(loc.text) for loc in soup.find_all("loc")]
             self.logger.info(f"Found {len(urls)} links from sitemap")
             return urls
         except requests.exceptions.RequestException:
             self.logger.info("Sitemap not found or inaccessible")
             return []
 
-    def _from_navigation(self):
+    def _from_all_links(self):
         try:
             response = requests.get(self.base_url, timeout=10)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, "html.parser")
+            
             links = []
             for a_tag in soup.find_all("a", href=True):
                 href = a_tag['href']
                 full_url = urllib.parse.urljoin(self.base_url, href)
+                full_url = self.strip_fragment(full_url)
                 if full_url.startswith(self.base_url):
                     links.append(full_url)
+
             links = list(set(links))  # Remove duplicates
-            self.logger.info(f"Found {len(links)} links from navigation")
+            self.logger.info(f"Found {len(links)} links matching the base URL")
             return links
-        except requests.exceptions.RequestException:
-            self.logger.info("Failed to extract links from navigation")
+        
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Failed to extract links: {str(e)}")
             return []
 
-    def _from_custom_logic(self):
-        parsed_url = urllib.parse.urlparse(self.base_url)
-        if "github.io" in parsed_url.netloc:
-            return self._extract_github_io_links()
-        return []
-
-    def _extract_github_io_links(self):
-        # Custom logic for github.io sites
-        try:
-            response = requests.get(self.base_url, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, "html.parser")
-            # Assume that documentation pages are linked in the sidebar or main content
-            content = soup.find('div', {'class': 'sidebar'}) or soup.find('div', {'class': 'content'})
-            if not content:
-                return []
-            links = []
-            for a_tag in content.find_all("a", href=True):
-                href = a_tag['href']
-                full_url = urllib.parse.urljoin(self.base_url, href)
-                if full_url.startswith(self.base_url):
-                    links.append(full_url)
-            links = list(set(links))
-            self.logger.info(f"Found {len(links)} links from custom GitHub.io logic")
-            return links
-        except requests.exceptions.RequestException:
-            self.logger.info("Failed to extract links from custom GitHub.io logic")
-            return []
+    @staticmethod
+    def strip_fragment(url):
+        """
+        Strip the fragment identifier from a URL.
+        """
+        parsed = urllib.parse.urlparse(url)
+        return urllib.parse.urlunparse(parsed._replace(fragment=''))
