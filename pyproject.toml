@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-doxi = "doxi.cli:cli"
+doxi = "doxi.cli:main"
 
 [build-system]
 requires = ["hatchling"]
